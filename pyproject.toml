@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fastsim-tt4a"
+version = "0.1.0"
+description = "Projeto portfolio de simulacao rapida com ML para HEP."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.2",
+    "numpy>=1.26",
+    "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "ruff>=0.5",
+]
+ui = [
+    "streamlit>=1.36",
+]
+
+[project.scripts]
+fastsim-train = "fastsim_tt4a.train:main"
+fastsim-eval = "fastsim_tt4a.evaluate:main"
+fastsim-validate = "fastsim_tt4a.validate:main"
+fastsim-dashboard = "fastsim_tt4a.dashboard:main"
+fastsim-benchmark = "fastsim_tt4a.benchmark:main"
+fastsim-submission = "fastsim_tt4a.submission:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+addopts = "-q"
