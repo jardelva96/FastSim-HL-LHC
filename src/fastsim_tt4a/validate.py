@@ -1,3 +1,9 @@
+"""CLI wrapper for detailed physics validation.
+
+Thin entry-point that delegates to :func:`analysis.evaluate_physics_report`
+and writes the JSON report to disk.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -8,6 +14,7 @@ from .analysis import evaluate_physics_report
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the validation script."""
     parser = argparse.ArgumentParser(
         description="Executa validacao fisica detalhada de um checkpoint."
     )
@@ -23,6 +30,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """CLI entry-point for ``fastsim-validate``."""
     args = parse_args()
     report = evaluate_physics_report(
         checkpoint_path=args.checkpoint,
@@ -45,4 +53,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -1,8 +1,15 @@
+"""Detector geometry, synthetic shower generation and normalisation utilities.
+
+This module provides the building blocks for creating synthetic calorimeter
+datasets used to train and evaluate fast-simulation models.  It defines
+a configurable detector geometry, physics-motivated simulation parameters,
+graph adjacency construction and energy/time normalisation transforms.
+"""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
 import math
-from typing import Dict
+from dataclasses import dataclass
 
 import torch
 from torch.utils.data import Dataset
@@ -10,16 +17,40 @@ from torch.utils.data import Dataset
 
 @dataclass(frozen=True)
 class DetectorGeometry:
+    """Simplified cylindrical calorimeter geometry.
+
+    Parameters
+    ----------
+    n_layers : int
+        Number of radial detector layers (must be >= 1).
+    cells_per_layer : int
+        Azimuthal granularity per layer (must be >= 2).
+    """
+
     n_layers: int = 6
     cells_per_layer: int = 16
 
+    def __post_init__(self) -> None:
+        if self.n_layers < 1:
+            raise ValueError(f"n_layers deve ser >= 1, recebido {self.n_layers}")
+        if self.cells_per_layer < 2:
+            raise ValueError(
+                f"cells_per_layer deve ser >= 2, recebido {self.cells_per_layer}"
+            )
+
     @property
     def n_nodes(self) -> int:
+        """Total number of read-out cells in the detector."""
         return self.n_layers * self.cells_per_layer
 
 
 @dataclass(frozen=True)
 class SimulationConfig:
+    """Physics parameters that control synthetic shower generation.
+
+    All energy values are in GeV and time values in nanoseconds.
+    """
+
     beam_energy_min: float = 30.0
     beam_energy_max: float = 300.0
     pileup_mean: float = 60.0
@@ -40,8 +71,24 @@ ENERGY_LOG_SCALE = 6.0
 TIME_OFFSET = 25.0
 TIME_SCALE = 20.0
 
+# Module-level cache for adjacency matrices keyed by (n_layers, cells_per_layer).
+_adj_cache: dict[tuple[int, int], torch.Tensor] = {}
+
 
 def build_grid_adjacency(geometry: DetectorGeometry) -> torch.Tensor:
+    """Build a row-normalised adjacency matrix for the detector graph.
+
+    Each cell is connected to its azimuthal neighbours (with periodic
+    boundary conditions) and to vertically adjacent cells in neighbouring
+    layers.  Self-loops are added before normalisation.
+
+    Results are cached so that repeated calls with the same geometry
+    do not recompute the matrix.
+    """
+    key = (geometry.n_layers, geometry.cells_per_layer)
+    if key in _adj_cache:
+        return _adj_cache[key].clone()
+
     n_nodes = geometry.n_nodes
     adj = torch.zeros((n_nodes, n_nodes), dtype=torch.float32)
 
@@ -65,10 +112,14 @@ def build_grid_adjacency(geometry: DetectorGeometry) -> torch.Tensor:
 
     adj = adj + torch.eye(n_nodes, dtype=torch.float32)
     deg = adj.sum(dim=-1, keepdim=True).clamp_min(1.0)
-    return adj / deg
+    result = adj / deg
+
+    _adj_cache[key] = result.clone()
+    return result
 
 
 def node_coordinates(geometry: DetectorGeometry) -> torch.Tensor:
+    """Return ``(n_nodes, 3)`` coordinate tensor ``[layer_norm, sin(phi), cos(phi)]``."""
     coords = []
     for layer in range(geometry.n_layers):
         layer_norm = float(layer) / max(geometry.n_layers - 1, 1)
@@ -79,26 +130,49 @@ def node_coordinates(geometry: DetectorGeometry) -> torch.Tensor:
 
 
 def compose_encoder_input(coords: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """Concatenate node coordinates with target features along the last axis."""
     return torch.cat([coords, target], dim=-1)
 
 
 def normalize_energy(energy: torch.Tensor) -> torch.Tensor:
+    """Apply log1p normalisation to energy deposits (GeV -> normalised)."""
     return torch.log1p(energy.clamp_min(0.0)) / ENERGY_LOG_SCALE
 
 
 def denormalize_energy(energy_norm: torch.Tensor) -> torch.Tensor:
-    return torch.expm1(energy_norm * ENERGY_LOG_SCALE)
+    """Invert log1p normalisation and clamp to non-negative values."""
+    return torch.expm1(energy_norm * ENERGY_LOG_SCALE).clamp_min(0.0)
 
 
 def normalize_time(time: torch.Tensor) -> torch.Tensor:
+    """Centre and scale time measurements (ns -> normalised)."""
     return (time - TIME_OFFSET) / TIME_SCALE
 
 
 def denormalize_time(time_norm: torch.Tensor) -> torch.Tensor:
+    """Invert time normalisation (normalised -> ns)."""
     return (time_norm * TIME_SCALE) + TIME_OFFSET
 
 
 class SyntheticShowerDataset(Dataset):
+    """Vectorised generator for synthetic calorimeter shower events.
+
+    Each event consists of energy deposits and timing measurements across
+    a configurable cylindrical detector, conditioned on beam energy and
+    pileup level.
+
+    Parameters
+    ----------
+    num_events : int
+        Number of events to generate.
+    seed : int
+        Random seed for reproducibility.
+    geometry : DetectorGeometry | None
+        Detector layout; defaults to ``DetectorGeometry()``.
+    simulation : SimulationConfig | None
+        Physics parameters; defaults to ``SimulationConfig()``.
+    """
+
     def __init__(
         self,
         num_events: int = 5000,
@@ -114,6 +188,7 @@ class SyntheticShowerDataset(Dataset):
         self.conditions, self.targets = self._generate_events(num_events=num_events, seed=seed)
 
     def _generate_events(self, num_events: int, seed: int) -> tuple[torch.Tensor, torch.Tensor]:
+        """Generate *num_events* synthetic shower events (vectorised)."""
         g = torch.Generator().manual_seed(seed)
         n_nodes = self.geometry.n_nodes
         layer_pos = self.coords[:, 0] * max(self.geometry.n_layers - 1, 1)
@@ -171,7 +246,7 @@ class SyntheticShowerDataset(Dataset):
     def __len__(self) -> int:
         return self.targets.size(0)
 
-    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         return {
             "coords": self.coords,
             "adj": self.adj,

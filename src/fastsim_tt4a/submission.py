@@ -1,12 +1,20 @@
+"""Application packet generator for the TT-IV-A scholarship.
+
+Combines training, evaluation and benchmark results into a formatted
+markdown document with a technical summary, key metrics, reproduction
+commands and a draft contact email.
+"""
+
 from __future__ import annotations
 
 import argparse
-from datetime import date
 import json
+from datetime import date
 from pathlib import Path
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the submission script."""
     parser = argparse.ArgumentParser(
         description="Gera pacote de texto para apoiar a inscricao na selecao."
     )
@@ -21,6 +29,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def safe_load_json(path_str: str) -> dict[str, object]:
+    """Load a JSON file, returning an empty dict on missing files."""
     path = Path(path_str)
     if not path.exists():
         return {}
@@ -32,6 +41,7 @@ def safe_load_json(path_str: str) -> dict[str, object]:
 
 
 def fmt(value: object, digits: int = 6) -> str:
+    """Format a numeric value to *digits* decimal places."""
     if isinstance(value, (float, int)):
         return f"{value:.{digits}f}"
     return "-"
@@ -45,6 +55,7 @@ def build_application_packet(
     email_to: str,
     subject: str,
 ) -> str:
+    """Assemble the full markdown application packet."""
     winner = ""
     if benchmark:
         winner = str(benchmark.get("winner", ""))
@@ -114,6 +125,7 @@ def save_application_packet(
     email_to: str,
     subject: str,
 ) -> Path:
+    """Build and write the application packet to *out_path*."""
     packet = build_application_packet(
         summary=summary,
         evaluation=evaluation,
@@ -129,6 +141,7 @@ def save_application_packet(
 
 
 def main() -> None:
+    """CLI entry-point for ``fastsim-submission``."""
     args = parse_args()
     summary = safe_load_json(args.train_summary)
     evaluation = safe_load_json(args.eval_json)

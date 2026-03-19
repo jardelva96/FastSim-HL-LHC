@@ -1,3 +1,10 @@
+"""Automated model comparison benchmark.
+
+Trains both GraphCVAE and MLP baseline with identical hyper-parameters,
+evaluates reconstruction quality on a held-out set and produces a
+markdown report ranking the models by MSE.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -10,6 +17,7 @@ from .train import TrainingConfig, run_training
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the benchmark script."""
     parser = argparse.ArgumentParser(
         description="Benchmark rapido entre modelos para candidatura."
     )
@@ -27,6 +35,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def markdown_table(results: list[dict[str, object]]) -> str:
+    """Format benchmark results as a markdown comparison table."""
     lines = [
         "| Modelo | val_loss | mse_mean | energy_bias_mean | energy_resolution_rms | params |",
         "|---|---:|---:|---:|---:|---:|",
@@ -41,6 +50,7 @@ def markdown_table(results: list[dict[str, object]]) -> str:
 
 
 def main() -> None:
+    """CLI entry-point for ``fastsim-benchmark``."""
     args = parse_args()
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -112,4 +122,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

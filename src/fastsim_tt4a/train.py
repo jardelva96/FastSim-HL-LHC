@@ -1,11 +1,19 @@
+"""Training pipeline for fast-simulation models.
+
+Provides a fully configurable training loop with early stopping, learning
+rate scheduling, gradient clipping and reproducible seeding.  Training
+artefacts (checkpoint, history, config, summary) are written to the output
+directory for later evaluation and analysis.
+"""
+
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict, dataclass
-from pathlib import Path
 import json
 import random
-from typing import Callable, Dict
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -16,12 +24,17 @@ from tqdm import tqdm
 from .data import DetectorGeometry, SyntheticShowerDataset
 from .model import SUPPORTED_MODELS, build_model, forward_model, model_loss
 
-
 ProgressCallback = Callable[[int, int, dict[str, float]], None]
 
 
 @dataclass(frozen=True)
 class TrainingConfig:
+    """All hyper-parameters and runtime options for a training run.
+
+    This dataclass is serialised to ``train_config.json`` alongside
+    the model checkpoint so that every experiment is fully reproducible.
+    """
+
     num_events: int = 5000
     epochs: int = 15
     batch_size: int = 64
@@ -43,6 +56,7 @@ class TrainingConfig:
 
 
 def set_seed(seed: int) -> None:
+    """Set random seeds across all libraries for reproducibility."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -50,6 +64,7 @@ def set_seed(seed: int) -> None:
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the training script."""
     parser = argparse.ArgumentParser(description="Treino de CVAE em grafo para simulacao rapida.")
     parser.add_argument("--num-events", type=int, default=5000)
     parser.add_argument("--epochs", type=int, default=15)
@@ -72,11 +87,13 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def move_batch(batch: Dict[str, torch.Tensor], device: torch.device) -> Dict[str, torch.Tensor]:
+def move_batch(batch: dict[str, torch.Tensor], device: torch.device) -> dict[str, torch.Tensor]:
+    """Move all tensors in a batch dictionary to *device*."""
     return {k: v.to(device) for k, v in batch.items()}
 
 
 def resolve_device(device_name: str) -> torch.device:
+    """Resolve a device name string into a :class:`torch.device`."""
     if device_name == "auto":
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if device_name == "cuda" and not torch.cuda.is_available():
@@ -93,6 +110,7 @@ def train_epoch(
     device: torch.device,
     grad_clip: float,
 ) -> tuple[float, float, float]:
+    """Run one training epoch and return average (loss, recon, kl)."""
     model.train()
     total_loss = 0.0
     total_recon = 0.0
@@ -138,6 +156,7 @@ def eval_epoch(
     beta: float,
     device: torch.device,
 ) -> tuple[float, float, float]:
+    """Run one validation epoch and return average (loss, recon, kl)."""
     model.eval()
     total_loss = 0.0
     total_recon = 0.0
@@ -173,6 +192,11 @@ def run_training(
     config: TrainingConfig,
     progress_callback: ProgressCallback | None = None,
 ) -> dict[str, object]:
+    """Execute a full training run described by *config*.
+
+    Returns a dictionary with paths to all generated artefacts and the
+    training summary.
+    """
     set_seed(config.seed)
 
     if not (0.0 < config.val_split < 1.0):
@@ -338,6 +362,7 @@ def run_training(
 
 
 def main() -> None:
+    """CLI entry-point for ``fastsim-train``."""
     args = parse_args()
     config = TrainingConfig(
         num_events=args.num_events,

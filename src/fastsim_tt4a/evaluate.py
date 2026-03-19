@@ -1,8 +1,14 @@
+"""Model evaluation and checkpoint loading utilities.
+
+Provides functions for loading trained checkpoints, reconstructing model
+instances and computing reconstruction metrics on held-out synthetic data.
+"""
+
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import json
+from pathlib import Path
 
 import torch
 from torch import nn
@@ -14,6 +20,7 @@ from .model import MODEL_GRAPH_CVAE, SUPPORTED_MODELS, build_model, forward_mode
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the evaluation script."""
     parser = argparse.ArgumentParser(description="Avaliacao de checkpoint do CVAE em grafo.")
     parser.add_argument("--checkpoint", type=str, required=True)
     parser.add_argument("--num-events", type=int, default=1000)
@@ -27,10 +34,19 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_checkpoint(ckpt_path: Path | str, map_location: str = "cpu") -> dict[str, object]:
+    """Load a training checkpoint from disk.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the checkpoint file does not exist.
+    ValueError
+        If the checkpoint is missing the ``model_state_dict`` key.
+    """
     ckpt_path = Path(ckpt_path)
     if not ckpt_path.exists():
         raise FileNotFoundError(f"checkpoint nao encontrado: {ckpt_path}")
-    checkpoint = torch.load(ckpt_path, map_location=map_location)
+    checkpoint = torch.load(ckpt_path, map_location=map_location, weights_only=False)
     if "model_state_dict" not in checkpoint:
         raise ValueError("checkpoint invalido: chave model_state_dict ausente.")
     return checkpoint
@@ -41,6 +57,10 @@ def resolve_geometry_from_config(
     n_layers_override: int = 0,
     cells_override: int = 0,
 ) -> DetectorGeometry:
+    """Reconstruct :class:`DetectorGeometry` from a checkpoint config dict.
+
+    CLI overrides take precedence when positive.
+    """
     n_layers = int(config.get("n_layers", 6))
     cells_per_layer = int(config.get("cells_per_layer", 16))
     if n_layers_override > 0:
@@ -55,6 +75,10 @@ def build_model_from_checkpoint(
     n_nodes: int,
     device: str = "cpu",
 ) -> tuple[nn.Module, dict[str, object]]:
+    """Instantiate a model and load weights from a checkpoint.
+
+    Returns the model (in eval mode) and the checkpoint config dict.
+    """
     config = dict(checkpoint.get("config", {}))
     model_type = str(config.get("model_type", MODEL_GRAPH_CVAE))
     if model_type not in SUPPORTED_MODELS:
@@ -85,6 +109,10 @@ def evaluate_checkpoint(
     n_layers_override: int = 0,
     cells_override: int = 0,
 ) -> dict[str, float]:
+    """Evaluate a checkpoint on a fresh synthetic dataset.
+
+    Returns aggregated reconstruction metrics as a flat dictionary.
+    """
     ckpt = load_checkpoint(checkpoint_path, map_location=device)
     ckpt_config = dict(ckpt.get("config", {}))
     geometry = resolve_geometry_from_config(
@@ -135,6 +163,7 @@ def evaluate_checkpoint(
 
 @torch.no_grad()
 def main() -> None:
+    """CLI entry-point for ``fastsim-eval``."""
     args = parse_args()
     metrics = evaluate_checkpoint(
         checkpoint_path=args.checkpoint,

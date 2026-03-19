@@ -4,10 +4,24 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fastsim-tt4a"
-version = "0.1.0"
-description = "Projeto portfolio de simulacao rapida com ML para HEP."
+version = "0.2.0"
+description = "Fast simulation with graph-convolutional VAE for HL-LHC calorimetry."
 readme = "README.md"
 requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Jardel Vieira Alves", email = "jardel.va96@gmail.com"},
+]
+keywords = ["hep", "fast-simulation", "graph-neural-network", "vae", "calorimeter"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
 dependencies = [
     "torch>=2.2",
     "numpy>=1.26",
@@ -40,6 +54,9 @@ where = ["src"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

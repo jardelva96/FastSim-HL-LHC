@@ -1,7 +1,14 @@
+"""Physics validation and analysis utilities.
+
+Generates detailed physics reports including closure studies, longitudinal
+layer profiles, pileup-dependent resolution curves, 2-D energy/time maps
+and conditioned event sampling.
+"""
+
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 import torch
 from torch.utils.data import DataLoader
@@ -19,6 +26,7 @@ from .model import forward_model, sample_from_model
 
 
 def _default_pileup_bins() -> list[float]:
+    """Standard pileup bin edges for resolution profiling."""
     return [0.0, 40.0, 80.0, 120.0, 160.0, 200.0]
 
 
@@ -27,8 +35,9 @@ def _to_profile_table(
     rel_energy_error: torch.Tensor,
     bins: Sequence[float],
 ) -> list[dict[str, float | str]]:
+    """Bin relative energy errors by pileup level."""
     profile: list[dict[str, float | str]] = []
-    for left, right in zip(bins[:-1], bins[1:]):
+    for left, right in zip(bins[:-1], bins[1:], strict=True):
         mask = (pileup >= left) & (pileup < right)
         if mask.sum().item() == 0:
             profile.append(
@@ -65,6 +74,12 @@ def evaluate_physics_report(
     cells_override: int = 0,
     pileup_bins: Sequence[float] | None = None,
 ) -> dict[str, object]:
+    """Run a comprehensive physics validation and return the full report.
+
+    The report includes global reconstruction metrics, energy closure,
+    longitudinal layer profiles, pileup-resolved resolution curves and
+    averaged 2-D energy/time maps.
+    """
     checkpoint = load_checkpoint(checkpoint_path, map_location=device)
     ckpt_config = dict(checkpoint.get("config", {}))
     geometry = resolve_geometry_from_config(
@@ -239,6 +254,11 @@ def generate_conditioned_samples(
     n_layers_override: int = 0,
     cells_override: int = 0,
 ) -> dict[str, object]:
+    """Generate synthetic events conditioned on beam energy and pileup.
+
+    Returns mean and standard-deviation maps across samples for both
+    energy and time.
+    """
     checkpoint = load_checkpoint(checkpoint_path, map_location=device)
     ckpt_config = dict(checkpoint.get("config", {}))
     geometry = resolve_geometry_from_config(
