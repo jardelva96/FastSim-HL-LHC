@@ -13,11 +13,17 @@ else
     echo "[1/3] Ambiente virtual encontrado."
 fi
 
-source .venv/bin/activate
-
 echo "[2/3] Instalando dependencias..."
-pip install -q -e ".[dev,ui]" > /dev/null 2>&1
+.venv/bin/pip install -q -e ".[dev,ui]" > /dev/null 2>&1
+
+mkdir -p .streamlit
+if [ ! -f ".streamlit/credentials.toml" ]; then
+    printf '[general]\nemail = ""\n' > .streamlit/credentials.toml
+fi
+if [ ! -f ".streamlit/config.toml" ]; then
+    printf '[server]\nheadless = false\n\n[browser]\ngatherUsageStats = false\n' > .streamlit/config.toml
+fi
 
 echo "[3/3] Abrindo dashboard..."
 echo
-python -m fastsim_tt4a
+.venv/bin/python -m streamlit run src/fastsim_tt4a/dashboard.py
