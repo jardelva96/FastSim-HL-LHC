@@ -439,7 +439,7 @@ def _render_selection_tab(st: Any) -> None:
             value="artifacts/benchmark/benchmark_results.json",
         )
     with col2:
-        candidate_name = st.text_input("Seu nome", value="Seu Nome")
+        candidate_name = st.text_input("Seu nome", value="JARDEL VIEIRA ALVES")
         email_to = st.text_input("Email destino", value="thiago.tomei@unesp.br")
         subject = st.text_input("Assunto", value="Bolsa TT4A - 2026.01")
         out_md = st.text_input("Salvar pacote em", value="artifacts/application_packet.md")
