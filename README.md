@@ -26,18 +26,12 @@
 <tr>
 <td width="50%">
 
-### Windows — Executavel
+### Windows
 
-**Dois cliques** no arquivo:
+**Dois cliques** no `FastSim.exe` ou pelo terminal:
 
-```
-FastSim.exe
-```
-
-Ou pelo terminal:
-
-```
-run.bat
+```powershell
+.\run.bat
 ```
 
 </td>
