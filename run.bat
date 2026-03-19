@@ -12,11 +12,9 @@ if not exist ".venv" (
     echo [1/3] Ambiente virtual encontrado.
 )
 
-call .venv\Scripts\activate.bat
-
 echo [2/3] Instalando dependencias...
-pip install -q -e ".[dev,ui]" >nul 2>&1
+.venv\Scripts\pip.exe install -q -e ".[dev,ui]" >nul 2>&1
 
 echo [3/3] Abrindo dashboard...
 echo.
-python -m fastsim_tt4a
+.venv\Scripts\python.exe -m fastsim_tt4a
