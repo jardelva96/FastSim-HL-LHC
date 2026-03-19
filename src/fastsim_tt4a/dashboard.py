@@ -257,19 +257,24 @@ def _render_validation_tab(st: Any) -> None:
         save_flag = st.checkbox("Salvar resultado em arquivo", value=True)
 
     if st.button("Rodar validacao"):
-        with st.spinner("Executando validacao fisica..."):
-            report = evaluate_physics_report(
-                checkpoint_path=checkpoint_path,
-                num_events=int(num_events),
-                batch_size=int(batch_size),
-                seed=int(seed),
-                device="cpu",
+        if not Path(checkpoint_path).exists():
+            st.error(
+                "Checkpoint nao encontrado. Treine um modelo primeiro na aba **Treino**."
             )
-        st.session_state["last_validation"] = report
-        st.success("Validacao concluida.")
-        if save_flag:
-            path = _save_json(out_json, report)
-            st.caption(f"resultado salvo em: {path}")
+        else:
+            with st.spinner("Executando validacao fisica..."):
+                report = evaluate_physics_report(
+                    checkpoint_path=checkpoint_path,
+                    num_events=int(num_events),
+                    batch_size=int(batch_size),
+                    seed=int(seed),
+                    device="cpu",
+                )
+            st.session_state["last_validation"] = report
+            st.success("Validacao concluida.")
+            if save_flag:
+                path = _save_json(out_json, report)
+                st.caption(f"resultado salvo em: {path}")
 
     report = st.session_state.get("last_validation")
     if not report:
@@ -340,20 +345,25 @@ def _render_generation_tab(st: Any) -> None:
         save_flag = st.checkbox("Salvar geracao", value=True)
 
     if st.button("Gerar amostras"):
-        with st.spinner("Gerando eventos condicionados..."):
-            report = generate_conditioned_samples(
-                checkpoint_path=checkpoint_path,
-                beam_energy=float(beam_energy),
-                pileup=float(pileup),
-                num_samples=int(num_samples),
-                seed=int(seed),
-                device="cpu",
+        if not Path(checkpoint_path).exists():
+            st.error(
+                "Checkpoint nao encontrado. Treine um modelo primeiro na aba **Treino**."
             )
-        st.session_state["last_generated"] = report
-        st.success("Geracao concluida.")
-        if save_flag:
-            path = _save_json(out_json, report)
-            st.caption(f"resultado salvo em: {path}")
+        else:
+            with st.spinner("Gerando eventos condicionados..."):
+                report = generate_conditioned_samples(
+                    checkpoint_path=checkpoint_path,
+                    beam_energy=float(beam_energy),
+                    pileup=float(pileup),
+                    num_samples=int(num_samples),
+                    seed=int(seed),
+                    device="cpu",
+                )
+            st.session_state["last_generated"] = report
+            st.success("Geracao concluida.")
+            if save_flag:
+                path = _save_json(out_json, report)
+                st.caption(f"resultado salvo em: {path}")
 
     generated = st.session_state.get("last_generated")
     if not generated:
