@@ -31,8 +31,9 @@ else:
     from .train import TrainingConfig, run_training
 
 
-def _display_map(st: Any, title: str, values: list[list[float]]) -> None:
-    st.markdown(title)
+def _display_map(st: Any, title: str, description: str, values: list[list[float]]) -> None:
+    st.markdown(f"**{title}**")
+    st.caption(description)
     rounded = [[round(cell, 4) for cell in row] for row in values]
     st.dataframe(rounded, use_container_width=True)
 
@@ -46,7 +47,38 @@ def _save_json(path_str: str, payload: dict[str, Any]) -> Path:
 
 
 def _render_train_tab(st: Any) -> None:
-    st.subheader("Treino rapido")
+    st.subheader("Treino do modelo")
+    st.markdown(
+        """
+        Esta aba permite treinar o modelo de simulacao rapida diretamente pela interface.
+        O modelo aprende a reconstruir depositos de energia e tempo em cada celula do
+        calorimetro, condicionado na energia do feixe e no nivel de pileup.
+
+        **Como usar:** ajuste os hiperparametros abaixo e clique em **Treinar**.
+        O modelo sera salvo automaticamente na pasta de artefatos.
+        """
+    )
+
+    with st.expander("Guia dos hiperparametros", expanded=False):
+        st.markdown(
+            """
+| Parametro | O que controla |
+|-----------|---------------|
+| **Eventos** | Chuveiros sinteticos para treino. Mais = melhor generalizacao. |
+| **Epocas** | Passagens pelo dataset. Pode parar antes (early stopping). |
+| **Batch size** | Eventos por iteracao. Maior = mais rapido, mais memoria. |
+| **Learning rate** | Velocidade do otimizador. Alto = instavel; baixo = lento. |
+| **Hidden dim** | Largura das camadas ocultas. Mais = mais capacidade. |
+| **Latent dim** | Dimensao latente do VAE. Controla compressao. |
+| **Beta (KL)** | Peso da regularizacao KL. Maior = latente mais organizado. |
+| **Early stopping** | Epocas sem melhora antes de parar. Evita overfitting. |
+| **Camadas** | Camadas radiais do detector simulado. |
+| **Celulas/camada** | Granularidade azimutal de cada camada. |
+| **Modelo** | `graph_cvae` (grafo) ou `mlp_ae` (baseline). |
+| **Seed** | Semente aleatoria. Mesmo seed = mesmo resultado. |
+            """
+        )
+
     with st.form("train_form"):
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -107,6 +139,12 @@ def _render_train_tab(st: Any) -> None:
     st.success("Treino concluido.")
     st.json(result["summary"])
 
+    st.markdown("#### Curvas de treino")
+    st.caption(
+        "**train_loss** e **val_loss** devem convergir juntas. Se val_loss sobe enquanto "
+        "train_loss desce, o modelo esta em overfitting. "
+        "**lr** mostra a taxa de aprendizado (reduzida automaticamente quando val_loss estagna)."
+    )
     history = result["history"]
     st.line_chart(
         {
@@ -118,7 +156,18 @@ def _render_train_tab(st: Any) -> None:
 
 
 def _render_history_tab(st: Any) -> None:
-    st.subheader("Visualizar historico salvo")
+    st.subheader("Visualizar historico de treino salvo")
+    st.markdown(
+        """
+        Carregue o arquivo `history.json` de um treino anterior para visualizar
+        como o modelo evoluiu ao longo das epocas.
+
+        **O que observar:**
+        - **train_loss** e **val_loss** devem cair ao longo das epocas
+        - Se val_loss para de cair mas train_loss continua caindo = overfitting
+        - O **lr** (learning rate) e reduzido automaticamente quando o modelo estagna
+        """
+    )
     history_path = st.text_input("Arquivo history.json", value="artifacts/history.json")
     if not st.button("Carregar historico"):
         return
@@ -133,6 +182,11 @@ def _render_history_tab(st: Any) -> None:
         st.warning("Historico vazio.")
         return
 
+    st.markdown("#### Curvas de convergencia")
+    st.caption(
+        "O grafico mostra a evolucao da loss de treino (train_loss), "
+        "loss de validacao (val_loss) e taxa de aprendizado (lr) por epoca."
+    )
     st.line_chart(
         {
             "train_loss": [h["train_loss"] for h in history],
@@ -140,11 +194,31 @@ def _render_history_tab(st: Any) -> None:
             "lr": [h.get("lr", 0.0) for h in history],
         }
     )
+
+    st.markdown("#### Tabela detalhada por epoca")
+    st.caption(
+        "Cada linha e uma epoca. **train_recon** e **val_recon** sao a parte de reconstrucao "
+        "da loss. **train_kl** e **val_kl** sao a divergencia KL (regularizacao do espaco latente)."
+    )
     st.dataframe(history, use_container_width=True)
 
 
 def _render_event_tab(st: Any) -> None:
-    st.subheader("Inspecionar evento e reconstruir com checkpoint")
+    st.subheader("Inspecionar evento individual")
+    st.markdown(
+        """
+        Visualize um evento sintetico individual e compare os valores **verdadeiros**
+        (gerados pela simulacao) com os valores **reconstruidos** pelo modelo treinado.
+
+        **Tabelas mostradas:**
+        - **Energia verdadeira/reconstruida** (GeV): deposito de energia em cada celula.
+          Linhas = camadas do detector, colunas = celulas azimutais.
+        - **Tempo verdadeiro/reconstruido** (ns): tempo de chegada do sinal em cada celula.
+
+        Se os valores reconstruidos forem proximos dos verdadeiros, o modelo esta
+        aprendendo bem a representar o chuveiro de particulas.
+        """
+    )
     col1, col2 = st.columns(2)
     with col1:
         num_events = st.number_input(
@@ -181,6 +255,11 @@ def _render_event_tab(st: Any) -> None:
     sample = dataset[idx]
 
     cond = sample["cond"].tolist()
+    st.markdown("#### Condicoes do evento")
+    st.caption(
+        "Valores normalizados entre 0 e 1. "
+        "beam_energy_norm=1.0 corresponde a 300 GeV; pileup_norm=1.0 corresponde a 200 interacoes."
+    )
     st.write(
         {
             "beam_energy_norm": round(cond[0], 4),
@@ -196,17 +275,27 @@ def _render_event_tab(st: Any) -> None:
         geometry.n_layers,
         geometry.cells_per_layer,
     )
+
+    st.markdown("#### Valores verdadeiros (simulacao)")
     left, right = st.columns(2)
     with left:
-        st.markdown("Energia verdadeira por celula")
+        st.markdown("**Energia verdadeira por celula (GeV)**")
+        st.caption(
+            "Deposito de energia em cada celula do detector. "
+            "Valores mais altos = mais energia depositada."
+        )
         st.dataframe(true_energy.numpy(), use_container_width=True)
     with right:
-        st.markdown("Tempo verdadeiro por celula")
+        st.markdown("**Tempo verdadeiro por celula (ns)**")
+        st.caption("Tempo de chegada do sinal. Camadas mais profundas tem tempos maiores.")
         st.dataframe(true_time.numpy(), use_container_width=True)
 
     ckpt_path = Path(checkpoint_path)
     if not ckpt_path.exists():
-        st.info("Checkpoint nao encontrado. Mostrando apenas o evento verdadeiro.")
+        st.info(
+            "Checkpoint nao encontrado. Treine um modelo "
+            "na aba **Treino** para ver a reconstrucao."
+        )
         return
 
     checkpoint = load_checkpoint(ckpt_path, map_location="cpu")
@@ -234,17 +323,28 @@ def _render_event_tab(st: Any) -> None:
         geometry.cells_per_layer,
     )
 
+    st.markdown("#### Valores reconstruidos (modelo)")
+    st.caption("Compare com os verdadeiros acima. Quanto mais proximos, melhor a reconstrucao.")
     left, right = st.columns(2)
     with left:
-        st.markdown("Energia reconstruida")
+        st.markdown("**Energia reconstruida (GeV)**")
         st.dataframe(pred_energy.numpy(), use_container_width=True)
     with right:
-        st.markdown("Tempo reconstruido")
+        st.markdown("**Tempo reconstruido (ns)**")
         st.dataframe(pred_time.numpy(), use_container_width=True)
 
 
 def _render_validation_tab(st: Any) -> None:
     st.subheader("Validacao fisica detalhada")
+    st.markdown(
+        """
+        Avalia a qualidade fisica do modelo treinado usando um conjunto de eventos
+        independente. Gera metricas globais, estudo de closure energetico,
+        perfis por camada e por faixa de pileup.
+
+        **Fluxo:** treine o modelo na aba Treino, depois rode a validacao aqui.
+        """
+    )
     col1, col2, col3 = st.columns(3)
     with col1:
         checkpoint_path = st.text_input("Checkpoint", value="artifacts/model.pt")
@@ -284,18 +384,54 @@ def _render_validation_tab(st: Any) -> None:
     global_metrics = dict(report["global_metrics"])
     closure = dict(report["closure"])
 
+    # --- Metricas globais ---
+    st.markdown("#### Metricas globais de reconstrucao")
+    with st.expander("O que cada metrica significa", expanded=True):
+        st.markdown(
+            """
+| Metrica | Significado | Ideal |
+|---------|------------|-------|
+| **mse_mean** | Erro quadratico medio (normalizado). Menor = melhor. | 0.0 |
+| **energy_bias_mean** | Vies `(pred-true)/true`. Positivo = superestima. | 0.0 |
+| **energy_resolution_rms** | Dispersao do erro relativo. Menor = consistente. | 0.0 |
+            """
+        )
+
     c1, c2, c3 = st.columns(3)
     c1.metric("mse_mean", f"{global_metrics['mse_mean']:.6f}")
     c2.metric("energy_bias_mean", f"{global_metrics['energy_bias_mean']:.6f}")
     c3.metric("energy_resolution_rms", f"{global_metrics['energy_resolution_rms']:.6f}")
+
+    # --- Closure ---
+    st.markdown("#### Closure energetico")
+    with st.expander("O que e closure energetico", expanded=False):
+        st.markdown(
+            """
+            O closure mede se o modelo conserva a energia total do evento.
+            E a razao `energia_predita_total / energia_verdadeira_total` para cada evento.
+
+| Metrica | Significado | Ideal |
+|---------|------------|-------|
+| **closure_mean** | Media da razao. 1.0 = conserva energia. | 1.0 |
+| **closure_std** | Desvio padrao. Menor = mais consistente. | 0.0 |
+| **closure_p95_abs_dev** | 95% dos eventos dentro deste desvio. | 0.0 |
+            """
+        )
 
     c1, c2, c3 = st.columns(3)
     c1.metric("closure_mean", f"{closure['closure_mean']:.6f}")
     c2.metric("closure_std", f"{closure['closure_std']:.6f}")
     c3.metric("closure_p95_abs_dev", f"{closure['closure_p95_abs_dev']:.6f}")
 
+    # --- Perfil longitudinal ---
     layer_profile = list(report["layer_profile"])
-    st.markdown("Perfil longitudinal de energia")
+    st.markdown("#### Perfil longitudinal de energia")
+    st.caption(
+        "Mostra como a energia se distribui pelas camadas do detector. "
+        "A curva **true** e a referencia; **pred** e a reconstrucao. "
+        "**abs_error_mean** mostra o erro absoluto medio por camada. "
+        "Em um bom modelo, pred acompanha true de perto e o erro e pequeno."
+    )
     st.line_chart(
         {
             "true_energy_mean": [x["true_energy_mean"] for x in layer_profile],
@@ -305,8 +441,17 @@ def _render_validation_tab(st: Any) -> None:
     )
     st.dataframe(layer_profile, use_container_width=True)
 
+    # --- Perfil por pileup ---
     pileup_profile = list(report["pileup_profile"])
-    st.markdown("Perfil por faixa de pileup")
+    st.markdown("#### Perfil por faixa de pileup")
+    st.caption(
+        "Avalia como a qualidade do modelo varia com o nivel de pileup "
+        "(numero de interacoes simultaneas). "
+        "**bias** = vies medio naquela faixa. "
+        "**resolution_rms** = dispersao do erro. "
+        "**abs_bias_p90** = 90% dos eventos tem vies absoluto menor que este valor. "
+        "Um bom modelo mantem metricas estaveis em todas as faixas de pileup."
+    )
     st.dataframe(pileup_profile, use_container_width=True)
     st.line_chart(
         {
@@ -316,17 +461,56 @@ def _render_validation_tab(st: Any) -> None:
         }
     )
 
+    # --- Mapas 2D ---
+    st.markdown("#### Mapas 2D medios (camada x celula)")
+    st.caption(
+        "Cada tabela mostra a media sobre todos os eventos. "
+        "Linhas = camadas do detector (da mais interna para a mais externa). "
+        "Colunas = celulas azimutais (posicao angular)."
+    )
     left, right = st.columns(2)
     with left:
-        _display_map(st, "Mapa medio de energia (true)", report["true_energy_map_mean"])
-        _display_map(st, "Mapa medio de energia (pred)", report["pred_energy_map_mean"])
+        _display_map(
+            st,
+            "Energia verdadeira (true)",
+            "Deposito medio de energia por celula na simulacao original (GeV).",
+            report["true_energy_map_mean"],
+        )
+        _display_map(
+            st,
+            "Energia reconstruida (pred)",
+            "Deposito medio de energia reconstruido pelo modelo (GeV). Deve ser proximo ao true.",
+            report["pred_energy_map_mean"],
+        )
     with right:
-        _display_map(st, "Erro absoluto medio de energia", report["abs_energy_error_map_mean"])
-        _display_map(st, "Mapa medio de tempo (pred)", report["pred_time_map_mean"])
+        _display_map(
+            st,
+            "Erro absoluto medio de energia",
+            "Diferenca absoluta media entre pred e true. Valores menores = melhor reconstrucao.",
+            report["abs_energy_error_map_mean"],
+        )
+        _display_map(
+            st,
+            "Tempo reconstruido (pred)",
+            "Tempo medio reconstruido pelo modelo (ns).",
+            report["pred_time_map_mean"],
+        )
 
 
 def _render_generation_tab(st: Any) -> None:
     st.subheader("Geracao condicionada de eventos")
+    st.markdown(
+        """
+        Gera **novos eventos sinteticos** a partir do espaco latente do modelo treinado,
+        condicionados em uma energia de feixe e nivel de pileup escolhidos.
+
+        Isso demonstra a capacidade generativa do modelo: ele nao esta apenas reconstruindo
+        eventos conhecidos, mas criando novos eventos fisicamente plausiveis.
+
+        **Como usar:** escolha a energia do feixe (30-300 GeV) e o pileup (0-200),
+        depois clique em **Gerar amostras**.
+        """
+    )
     col1, col2, col3 = st.columns(3)
     with col1:
         checkpoint_path = st.text_input("Checkpoint geracao", value="artifacts/model.pt")
@@ -370,6 +554,7 @@ def _render_generation_tab(st: Any) -> None:
         st.info("Gere amostras para visualizar mapas medio e dispersao.")
         return
 
+    st.markdown("#### Condicoes usadas")
     st.write(
         {
             "model_type": generated["model_type"],
@@ -378,17 +563,58 @@ def _render_generation_tab(st: Any) -> None:
             "n_samples": generated["n_samples"],
         }
     )
+
+    st.markdown("#### Mapas gerados")
+    st.caption(
+        "**Media** mostra o padrao tipico dos eventos gerados nessas condicoes. "
+        "**Desvio padrao** mostra a variabilidade entre amostras -- "
+        "se for muito alto, o modelo tem incerteza; "
+        "se for zero, esta colapsando para um unico padrao."
+    )
     left, right = st.columns(2)
     with left:
-        _display_map(st, "Energia media gerada", generated["energy_mean_map"])
-        _display_map(st, "Energia desvio padrao", generated["energy_std_map"])
+        _display_map(
+            st,
+            "Energia media gerada (GeV)",
+            "Media dos depositos de energia nas amostras geradas.",
+            generated["energy_mean_map"],
+        )
+        _display_map(
+            st,
+            "Energia desvio padrao (GeV)",
+            "Variabilidade da energia entre as amostras. "
+            "Valores moderados indicam diversidade saudavel.",
+            generated["energy_std_map"],
+        )
     with right:
-        _display_map(st, "Tempo medio gerado", generated["time_mean_map"])
-        _display_map(st, "Tempo desvio padrao", generated["time_std_map"])
+        _display_map(
+            st,
+            "Tempo medio gerado (ns)",
+            "Media dos tempos de chegada nas amostras geradas.",
+            generated["time_mean_map"],
+        )
+        _display_map(
+            st,
+            "Tempo desvio padrao (ns)",
+            "Variabilidade do tempo entre amostras.",
+            generated["time_std_map"],
+        )
 
 
 def _render_benchmark_tab(st: Any) -> None:
-    st.subheader("Benchmark comparativo")
+    st.subheader("Benchmark comparativo entre modelos")
+    st.markdown(
+        """
+        Compara o desempenho dos dois modelos treinados: **GraphCVAE** (modelo principal
+        com convolucoes em grafo) e **MLP baseline** (autoencoder sem estrutura de grafo).
+
+        O objetivo e demonstrar que explorar a estrutura espacial do detector (via grafo)
+        traz ganhos mensuráveis em relacao a uma abordagem puramente MLP.
+
+        **Como usar:** primeiro rode `fastsim-benchmark` pelo terminal, depois carregue
+        o arquivo de resultados aqui.
+        """
+    )
     benchmark_path = st.text_input(
         "Arquivo benchmark_results.json",
         value="artifacts/benchmark/benchmark_results.json",
@@ -408,8 +634,23 @@ def _render_benchmark_tab(st: Any) -> None:
         return
 
     winner = str(payload.get("winner", "-"))
-    st.metric("Melhor modelo (mse_mean)", winner)
+    st.metric("Melhor modelo (por mse_mean)", winner)
+
+    st.markdown("#### Tabela comparativa")
+    st.caption(
+        "Cada linha e um modelo. As colunas mostram: "
+        "**val_loss** = loss de validacao final, "
+        "**mse_mean** = erro de reconstrucao, "
+        "**energy_bias_mean** = vies energetico, "
+        "**energy_resolution_rms** = resolucao, "
+        "**params** = numero de parametros treinaveis."
+    )
     st.dataframe(results, use_container_width=True)
+
+    st.markdown("#### Comparacao visual")
+    st.caption(
+        "Barras mais baixas = melhor. O modelo com menor **mse_mean** e declarado vencedor."
+    )
     st.line_chart(
         {
             "mse_mean": [row["mse_mean"] for row in results],
@@ -420,13 +661,21 @@ def _render_benchmark_tab(st: Any) -> None:
 
 
 def _render_selection_tab(st: Any) -> None:
-    st.subheader("Checklist de selecao e pacote final")
+    st.subheader("Pacote de candidatura")
     st.markdown(
         """
-        - Mostre comparacao entre `graph_cvae` e `mlp_ae`.
-        - Reporte `mse_mean`, `energy_bias_mean`, `energy_resolution_rms`.
-        - Traga validacao fisica por camada e por faixa de pileup.
-        - Envie comandos de reproducao + link do repositorio.
+        Gera automaticamente um documento Markdown com o resumo tecnico do projeto,
+        metricas principais e um rascunho de email para enviar ao orientador.
+
+        **Checklist antes de gerar:**
+        """
+    )
+    st.markdown(
+        """
+        - Treine o modelo na aba **Treino**
+        - Rode a avaliacao: `fastsim-eval --checkpoint artifacts/model.pt`
+        - (Opcional) Rode o benchmark: `fastsim-benchmark --out-dir artifacts/benchmark`
+        - Preencha seu nome e email destino abaixo
         """
     )
 
@@ -465,9 +714,18 @@ def _render_selection_tab(st: Any) -> None:
 def render_app() -> None:
     import streamlit as st
 
-    st.set_page_config(page_title="FastSim TT-IV-A", layout="wide")
-    st.title("FastSim TT-IV-A Dashboard")
-    st.caption("Treino, benchmark, validacao fisica e pacote de candidatura.")
+    st.set_page_config(page_title="FastSim HL-LHC", layout="wide")
+    st.title("FastSim HL-LHC")
+    st.caption(
+        "Simulacao rapida de chuveiros em calorimetro com Graph Neural Networks. "
+        "Use as abas abaixo para treinar, avaliar e validar o modelo."
+    )
+
+    st.markdown(
+        """
+        > **Fluxo recomendado:** Treino → Validacao Fisica → Geracao → Benchmark → Selecao
+        """
+    )
 
     tabs = st.tabs(
         [
